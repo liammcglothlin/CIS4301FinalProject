@@ -7,7 +7,6 @@ from models.Rental import Rental
 from models.Customer import Customer
 from datetime import date, timedelta
 
-
 conn = connect(
     user=DB_CONFIG["username"],
     password=DB_CONFIG["password"],
@@ -58,90 +57,95 @@ def add_item(new_item: Item = None):
     """
     Adds a new item to the item table.
     """
-    cur.execute("SELECT COALESCE(MAX(i_item_sk), 0) + 1 FROM item")
-    new_item_sk = cur.fetchone()[0]
-
-    rec_start_date = f"{new_item.start_year}-01-01"
-
-    cur.execute("""
-        INSERT INTO item (
-            i_item_sk,
-            i_item_id,
-            i_rec_start_date,
-            i_product_name,
-            i_brand,
-            i_class,
-            i_category,
-            i_manufact,
-            i_current_price,
-            i_num_owned
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        new_item_sk,
-        new_item.item_id,
-        rec_start_date,
-        new_item.product_name,
-        new_item.brand,
-        new_item.category,
-        new_item.category,
-        new_item.manufact,
-        new_item.current_price,
-        new_item.num_owned
-    ))
+    if new_item is None:
+        return
+    try:
+        cur.execute("SELECT COALESCE(MAX(i_item_sk), 0) + 1 FROM item")
+        new_item_sk = cur.fetchone()[0]
+        rec_start_date = f"{new_item.start_year}-01-01"
+        cur.execute("""
+            INSERT INTO item (
+                i_item_sk,
+                i_item_id,
+                i_rec_start_date,
+                i_product_name,
+                i_brand,
+                i_class,
+                i_category,
+                i_manufact,
+                i_current_price,
+                i_num_owned
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            new_item_sk,
+            new_item.item_id,
+            rec_start_date,
+            new_item.product_name,
+            new_item.brand,
+            new_item.category,
+            new_item.category,
+            new_item.manufact,
+            new_item.current_price,
+            new_item.num_owned
+        ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in add_item: {e}")
 
 
 def add_customer(new_customer: Customer = None):
     """
     Adds a new customer and customer address.
     """
-    street_number, street_name, city, state, zip_code = parse_address(new_customer.address)
-
-    cur.execute("SELECT COALESCE(MAX(ca_address_sk), 0) + 1 FROM customer_address")
-    new_addr_sk = cur.fetchone()[0]
-
-    cur.execute("""
-        INSERT INTO customer_address (
-            ca_address_sk,
-            ca_street_number,
-            ca_street_name,
-            ca_city,
-            ca_state,
-            ca_zip
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        new_addr_sk,
-        street_number,
-        street_name,
-        city,
-        state,
-        zip_code
-    ))
-
-    cur.execute("SELECT COALESCE(MAX(c_customer_sk), 0) + 1 FROM customer")
-    new_customer_sk = cur.fetchone()[0]
-
-    first_name, last_name = split_name(new_customer.name)
-
-    cur.execute("""
-        INSERT INTO customer (
-            c_customer_sk,
-            c_customer_id,
-            c_first_name,
-            c_last_name,
-            c_email_address,
-            c_current_addr_sk
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (
-        new_customer_sk,
-        new_customer.customer_id,
-        first_name,
-        last_name,
-        new_customer.email,
-        new_addr_sk
-    ))
+    if new_customer is None:
+        return
+    try:
+        street_number, street_name, city, state, zip_code = parse_address(new_customer.address)
+        cur.execute("SELECT COALESCE(MAX(ca_address_sk), 0) + 1 FROM customer_address")
+        new_addr_sk = cur.fetchone()[0]
+        cur.execute("""
+            INSERT INTO customer_address (
+                ca_address_sk,
+                ca_street_number,
+                ca_street_name,
+                ca_city,
+                ca_state,
+                ca_zip
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            new_addr_sk,
+            street_number,
+            street_name,
+            city,
+            state,
+            zip_code
+        ))
+        cur.execute("SELECT COALESCE(MAX(c_customer_sk), 0) + 1 FROM customer")
+        new_customer_sk = cur.fetchone()[0]
+        first_name, last_name = split_name(new_customer.name)
+        cur.execute("""
+            INSERT INTO customer (
+                c_customer_sk,
+                c_customer_id,
+                c_first_name,
+                c_last_name,
+                c_email_address,
+                c_current_addr_sk
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            new_customer_sk,
+            new_customer.customer_id,
+            first_name,
+            last_name,
+            new_customer.email,
+            new_addr_sk
+        ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in add_customer: {e}")
 
 
 def edit_customer(original_customer_id: str = None, new_customer: Customer = None):
@@ -150,61 +154,63 @@ def edit_customer(original_customer_id: str = None, new_customer: Customer = Non
     """
     if new_customer is None:
         return
+    try:
+        customer_updates = []
+        params = []
+        if new_customer.customer_id is not None:
+            customer_updates.append("c_customer_id = ?")
+            params.append(new_customer.customer_id)
 
-    customer_updates = []
-    params = []
+        if new_customer.name is not None:
+            first_name, last_name = split_name(new_customer.name)
+            customer_updates.append("c_first_name = ?")
+            params.append(first_name)
+            customer_updates.append("c_last_name = ?")
+            params.append(last_name)
 
-    if new_customer.customer_id is not None:
-        customer_updates.append("c_customer_id = ?")
-        params.append(new_customer.customer_id)
+        if new_customer.email is not None:
+            customer_updates.append("c_email_address = ?")
+            params.append(new_customer.email)
 
-    if new_customer.name is not None:
-        first_name, last_name = split_name(new_customer.name)
-        customer_updates.append("c_first_name = ?")
-        params.append(first_name)
-        customer_updates.append("c_last_name = ?")
-        params.append(last_name)
+        if customer_updates:
+            query = "UPDATE customer SET " + ", ".join(customer_updates) + " WHERE c_customer_id = ?"
+            params.append(original_customer_id)
+            cur.execute(query, tuple(params))
 
-    if new_customer.email is not None:
-        customer_updates.append("c_email_address = ?")
-        params.append(new_customer.email)
-
-    if customer_updates:
-        query = "UPDATE customer SET " + ", ".join(customer_updates) + " WHERE c_customer_id = ?"
-        params.append(original_customer_id)
-        cur.execute(query, tuple(params))
-
-    if new_customer.address is not None:
-        lookup_id = new_customer.customer_id if new_customer.customer_id is not None else original_customer_id
-
-        cur.execute("""
-            SELECT c_current_addr_sk
-            FROM customer
-            WHERE c_customer_id = ?
-        """, (lookup_id,))
-
-        row = cur.fetchone()
-
-        if row is not None:
-            addr_sk = row[0]
-            street_number, street_name, city, state, zip_code = parse_address(new_customer.address)
+        if new_customer.address is not None:
+            lookup_id = new_customer.customer_id if new_customer.customer_id is not None else original_customer_id
 
             cur.execute("""
-                UPDATE customer_address
-                SET ca_street_number = ?,
-                    ca_street_name = ?,
-                    ca_city = ?,
-                    ca_state = ?,
-                    ca_zip = ?
-                WHERE ca_address_sk = ?
-            """, (
-                street_number,
-                street_name,
-                city,
-                state,
-                zip_code,
-                addr_sk
-            ))
+                SELECT c_current_addr_sk
+                FROM customer
+                WHERE c_customer_id = ?
+            """, (lookup_id,))
+
+            row = cur.fetchone()
+
+            if row is not None:
+                addr_sk = row[0]
+                street_number, street_name, city, state, zip_code = parse_address(new_customer.address)
+
+                cur.execute("""
+                    UPDATE customer_address
+                    SET ca_street_number = ?,
+                        ca_street_name = ?,
+                        ca_city = ?,
+                        ca_state = ?,
+                        ca_zip = ?
+                    WHERE ca_address_sk = ?
+                """, (
+                    street_number,
+                    street_name,
+                    city,
+                    state,
+                    zip_code,
+                    addr_sk
+                ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in edit_customer: {e}")
 
 
 def rent_item(item_id: str = None, customer_id: str = None):
@@ -213,23 +219,26 @@ def rent_item(item_id: str = None, customer_id: str = None):
     rental_date = today
     due_date = today + 14 days
     """
-    today = date.today()
-    due = today + timedelta(days=14)
-
-    cur.execute("""
-        INSERT INTO rental (
+    try:
+        today = date.today()
+        due = today + timedelta(days=14)
+        cur.execute("""
+            INSERT INTO rental (
+                item_id,
+                customer_id,
+                rental_date,
+                due_date
+            )
+            VALUES (?, ?, ?, ?)
+        """, (
             item_id,
             customer_id,
-            rental_date,
-            due_date
-        )
-        VALUES (?, ?, ?, ?)
-    """, (
-        item_id,
-        customer_id,
-        today,
-        due
-    ))
+            today,
+            due
+        ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in rent_item: {e}")
 
 
 def waitlist_customer(item_id: str = None, customer_id: str = None) -> int:
@@ -237,105 +246,121 @@ def waitlist_customer(item_id: str = None, customer_id: str = None) -> int:
     Adds a customer to the waitlist.
     Returns the customer's new place in line.
     """
-    new_place = line_length(item_id) + 1
-
-    cur.execute("""
-        INSERT INTO waitlist (
+    try:
+        new_place = line_length(item_id) + 1
+        cur.execute("""
+            INSERT INTO waitlist (
+                item_id,
+                customer_id,
+                place_in_line
+            )
+            VALUES (?, ?, ?)
+        """, (
             item_id,
             customer_id,
-            place_in_line
-        )
-        VALUES (?, ?, ?)
-    """, (
-        item_id,
-        customer_id,
-        new_place
-    ))
+            new_place
+        ))
 
-    return new_place
+        return new_place
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in waitlist_customer: {e}")
+        return -1
 
 
 def update_waitlist(item_id: str = None):
     """
     Removes the customer at position 1 and shifts everyone else down.
     """
-    cur.execute("""
-        DELETE FROM waitlist
-        WHERE item_id = ?
-          AND place_in_line = 1
-    """, (item_id,))
+    try:
+        cur.execute("""
+            DELETE FROM waitlist
+            WHERE item_id = ?
+              AND place_in_line = 1
+        """, (item_id,))
 
-    cur.execute("""
-        UPDATE waitlist
-        SET place_in_line = place_in_line - 1
-        WHERE item_id = ?
-          AND place_in_line > 1
-    """, (item_id,))
+        cur.execute("""
+            UPDATE waitlist
+            SET place_in_line = place_in_line - 1
+            WHERE item_id = ?
+              AND place_in_line > 1
+        """, (item_id,))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in update_waitlist: {e}")
 
 
 def return_item(item_id: str = None, customer_id: str = None):
     """
     Moves a rental from rental to rental_history.
     """
-    cur.execute("""
-        SELECT rental_date, due_date
-        FROM rental
-        WHERE item_id = ?
-          AND customer_id = ?
-    """, (
-        item_id,
-        customer_id
-    ))
+    try:
+        cur.execute("""
+            SELECT rental_date, due_date
+            FROM rental
+            WHERE item_id = ?
+              AND customer_id = ?
+        """, (
+            item_id,
+            customer_id
+        ))
 
-    rental_row = cur.fetchone()
+        rental_row = cur.fetchone()
 
-    if rental_row is None:
-        return
+        if rental_row is None:
+            return
 
-    rental_date = rental_row[0]
-    due_date = rental_row[1]
-    return_date = date.today()
+        rental_date = rental_row[0]
+        due_date = rental_row[1]
+        return_date = date.today()
 
-    cur.execute("""
-        INSERT INTO rental_history (
+        cur.execute("""
+            INSERT INTO rental_history (
+                item_id,
+                customer_id,
+                rental_date,
+                due_date,
+                return_date
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
             item_id,
             customer_id,
             rental_date,
             due_date,
             return_date
-        )
-        VALUES (?, ?, ?, ?, ?)
-    """, (
-        item_id,
-        customer_id,
-        rental_date,
-        due_date,
-        return_date
-    ))
+        ))
 
-    cur.execute("""
-        DELETE FROM rental
-        WHERE item_id = ?
-          AND customer_id = ?
-    """, (
-        item_id,
-        customer_id
-    ))
+        cur.execute("""
+            DELETE FROM rental
+            WHERE item_id = ?
+              AND customer_id = ?
+        """, (
+            item_id,
+            customer_id
+        ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in return_item: {e}")
 
 
 def grant_extension(item_id: str = None, customer_id: str = None):
     """
     Adds 14 days to the due date of an active rental.
     """
-    cur.execute("""
-        UPDATE rental
-        SET due_date = DATE_ADD(due_date, INTERVAL 14 DAY)
-        WHERE item_id = ?
-          AND customer_id = ?
-    """, (
-        item_id,
-        customer_id
-    ))
+    try:
+        cur.execute("""
+            UPDATE rental
+            SET due_date = DATE_ADD(due_date, INTERVAL 14 DAY)
+            WHERE item_id = ?
+              AND customer_id = ?
+        """, (
+            item_id,
+            customer_id
+        ))
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in grant_extension: {e}")
 
 
 def get_filtered_items(filter_attributes: Item = None,
@@ -784,7 +809,6 @@ def close_connection():
     """
     cur.close()
     conn.close()
-    
-    
-#Enter Item ID: AAAAAAAAOEGEAAAA
-#Enter Customer ID: AAAAAAAAAKGIBAAA
+
+# Enter Item ID: AAAAAAAAOEGEAAAA
+# Enter Customer ID: AAAAAAAAAKGIBAAA
